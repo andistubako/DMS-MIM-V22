@@ -1,0 +1,451 @@
+import { firestoreDb } from "./firebase.js";
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  writeBatch,
+  query,
+  limit,
+} from "firebase/firestore";
+
+const now = new Date().toISOString();
+
+export const defaultProvinces = [
+  { _id: "prv-35", id: "prv-35", code: "35", name: "Jawa Timur", status: "ACTIVE", created_at: now },
+  { _id: "prv-32", id: "prv-32", code: "32", name: "Jawa Barat", status: "ACTIVE", created_at: now },
+  { _id: "prv-31", id: "prv-31", code: "31", name: "DKI Jakarta", status: "ACTIVE", created_at: now },
+  { _id: "prv-36", id: "prv-36", code: "36", name: "Banten", status: "ACTIVE", created_at: now },
+];
+
+export const defaultRegencies = [
+  { _id: "reg-3573", id: "reg-3573", province_id: "prv-35", code: "3573", name: "Kota Malang", status: "ACTIVE", created_at: now },
+  { _id: "reg-3507", id: "reg-3507", province_id: "prv-35", code: "3507", name: "Kabupaten Malang", status: "ACTIVE", created_at: now },
+  { _id: "reg-3579", id: "reg-3579", province_id: "prv-35", code: "3579", name: "Kota Batu", status: "ACTIVE", created_at: now },
+  { _id: "reg-3203", id: "reg-3203", province_id: "prv-32", code: "3203", name: "Kabupaten Cianjur", status: "ACTIVE", created_at: now },
+  { _id: "reg-3202", id: "reg-3202", province_id: "prv-32", code: "3202", name: "Kabupaten Sukabumi", status: "ACTIVE", created_at: now },
+  { _id: "reg-3272", id: "reg-3272", province_id: "prv-32", code: "3272", name: "Kota Sukabumi", status: "ACTIVE", created_at: now },
+  { _id: "reg-3174", id: "reg-3174", province_id: "prv-31", code: "3174", name: "Kota Jakarta Selatan", status: "ACTIVE", created_at: now },
+  { _id: "reg-3173", id: "reg-3173", province_id: "prv-31", code: "3173", name: "Kota Jakarta Barat", status: "ACTIVE", created_at: now },
+];
+
+export const defaultOffices = [
+  {
+    _id: "off-1",
+    id: "off-1",
+    office_code: "JKT-01",
+    code: "JKT-01",
+    office_name: "Kantor Pusat & Depo Jakarta",
+    name: "Kantor Pusat & Depo Jakarta",
+    address: "Jl. Tebet Barat Dalam Raya No. 12, Tebet, Jakarta Selatan 12810",
+    latitude: -6.2383,
+    longitude: 106.8525,
+    radius_m: 100,
+    work_start_time: "08:00",
+    work_end_time: "17:00",
+    check_in_start: "06:30",
+    status: "ACTIVE",
+    created_at: now,
+  },
+  {
+    _id: "off-2",
+    id: "off-2",
+    office_code: "MLG-01",
+    code: "MLG-01",
+    office_name: "Depo Utama Jawa Timur (Malang)",
+    name: "Depo Utama Jawa Timur (Malang)",
+    address: "Jl. Letjen S. Parman No. 88, Purwantoro, Blimbing, Kota Malang 65122",
+    latitude: -7.9542,
+    longitude: 112.6398,
+    radius_m: 150,
+    work_start_time: "08:00",
+    work_end_time: "17:00",
+    check_in_start: "06:30",
+    status: "ACTIVE",
+    created_at: now,
+  },
+  {
+    _id: "off-3",
+    id: "off-3",
+    office_code: "CJR-01",
+    code: "CJR-01",
+    office_name: "Depo Cabang Cianjur",
+    name: "Depo Cabang Cianjur",
+    address: "Jl. Raya Cianjur No. 45, Pamoyanan, Cianjur 43211",
+    latitude: -6.8188,
+    longitude: 107.1394,
+    radius_m: 120,
+    work_start_time: "08:00",
+    work_end_time: "17:00",
+    check_in_start: "06:30",
+    status: "ACTIVE",
+    created_at: now,
+  },
+];
+
+export const defaultAreas = [
+  { _id: "area-mlg-01", id: "area-mlg-01", code: "AR-MLG-01", name: "Malang Kota & Sekitarnya", office_id: "off-2", regency_id: "reg-3573", status: "ACTIVE", created_at: now },
+  { _id: "area-mlg-02", id: "area-mlg-02", code: "AR-MLG-02", name: "Malang Utara & Singosari", office_id: "off-2", regency_id: "reg-3507", status: "ACTIVE", created_at: now },
+  { _id: "area-cjr-01", id: "area-cjr-01", code: "AR-CJR-01", name: "Cianjur Kota & Sekitarnya", office_id: "off-3", regency_id: "reg-3203", status: "ACTIVE", created_at: now },
+  { _id: "area-cjr-02", id: "area-cjr-02", code: "AR-CJR-02", name: "Cipanas & Puncak", office_id: "off-3", regency_id: "reg-3203", status: "ACTIVE", created_at: now },
+  { _id: "area-jkt-01", id: "area-jkt-01", code: "AR-JKT-01", name: "Jakarta Selatan Pusat", office_id: "off-1", regency_id: "reg-3174", status: "ACTIVE", created_at: now },
+];
+
+export const defaultDistricts = [
+  { _id: "dis-357301", id: "dis-357301", regency_id: "reg-3573", area_id: "area-mlg-01", name: "Klojen", status: "ACTIVE", created_at: now },
+  { _id: "dis-357302", id: "dis-357302", regency_id: "reg-3573", area_id: "area-mlg-01", name: "Blimbing", status: "ACTIVE", created_at: now },
+  { _id: "dis-357303", id: "dis-357303", regency_id: "reg-3573", area_id: "area-mlg-01", name: "Lowokwaru", status: "ACTIVE", created_at: now },
+  { _id: "dis-350701", id: "dis-350701", regency_id: "reg-3507", area_id: "area-mlg-02", name: "Singosari", status: "ACTIVE", created_at: now },
+  { _id: "dis-320301", id: "dis-320301", regency_id: "reg-3203", area_id: "area-cjr-01", name: "Cianjur", status: "ACTIVE", created_at: now },
+  { _id: "dis-320302", id: "dis-320302", regency_id: "reg-3203", area_id: "area-cjr-01", name: "Warungkondang", status: "ACTIVE", created_at: now },
+  { _id: "dis-320303", id: "dis-320303", regency_id: "reg-3203", area_id: "area-cjr-01", name: "Karangtengah", status: "ACTIVE", created_at: now },
+  { _id: "dis-320304", id: "dis-320304", regency_id: "reg-3203", area_id: "area-cjr-01", name: "Ciranjang", status: "ACTIVE", created_at: now },
+  { _id: "dis-320305", id: "dis-320305", regency_id: "reg-3203", area_id: "area-cjr-02", name: "Pacet", status: "ACTIVE", created_at: now },
+  { _id: "dis-320306", id: "dis-320306", regency_id: "reg-3203", area_id: "area-cjr-02", name: "Cipanas", status: "ACTIVE", created_at: now },
+  { _id: "dis-317401", id: "dis-317401", regency_id: "reg-3174", area_id: "area-jkt-01", name: "Tebet", status: "ACTIVE", created_at: now },
+  { _id: "dis-317402", id: "dis-317402", regency_id: "reg-3174", area_id: "area-jkt-01", name: "Pancoran", status: "ACTIVE", created_at: now },
+];
+
+export const defaultVillages = [
+  { _id: "vil-357301-01", id: "vil-357301-01", district_id: "dis-357301", name: "Kauman", status: "ACTIVE", created_at: now },
+  { _id: "vil-357301-02", id: "vil-357301-02", district_id: "dis-357301", name: "Kiduldalem", status: "ACTIVE", created_at: now },
+  { _id: "vil-357302-01", id: "vil-357302-01", district_id: "dis-357302", name: "Purwantoro", status: "ACTIVE", created_at: now },
+  { _id: "vil-357303-01", id: "vil-357303-01", district_id: "dis-357303", name: "Ketawanggede", status: "ACTIVE", created_at: now },
+  { _id: "vil-320301-01", id: "vil-320301-01", district_id: "dis-320301", name: "Pamoyanan", status: "ACTIVE", created_at: now },
+  { _id: "vil-320301-02", id: "vil-320301-02", district_id: "dis-320301", name: "Sayang", status: "ACTIVE", created_at: now },
+  { _id: "vil-320301-03", id: "vil-320301-03", district_id: "dis-320301", name: "Bojongherang", status: "ACTIVE", created_at: now },
+  { _id: "vil-320301-04", id: "vil-320301-04", district_id: "dis-320301", name: "Sawahgede", status: "ACTIVE", created_at: now },
+  { _id: "vil-320301-05", id: "vil-320301-05", district_id: "dis-320301", name: "Muka", status: "ACTIVE", created_at: now },
+  { _id: "vil-317401-01", id: "vil-317401-01", district_id: "dis-317401", name: "Tebet Barat", status: "ACTIVE", created_at: now },
+  { _id: "vil-317401-02", id: "vil-317401-02", district_id: "dis-317401", name: "Tebet Timur", status: "ACTIVE", created_at: now },
+  { _id: "vil-317401-03", id: "vil-317401-03", district_id: "dis-317401", name: "Menteng Dalam", status: "ACTIVE", created_at: now },
+];
+
+export const defaultChannels = [
+  { _id: "ch-1", id: "ch-1", code: "GT", name: "General Trade (Toko Kelontong/Warung)", status: "ACTIVE", created_at: now },
+  { _id: "ch-2", id: "ch-2", code: "MT", name: "Modern Trade (Minimarket/Supermarket)", status: "ACTIVE", created_at: now },
+  { _id: "ch-3", id: "ch-3", code: "HORECA", name: "Hotel, Resto & Kafe", status: "ACTIVE", created_at: now },
+  { _id: "ch-4", id: "ch-4", code: "WS", name: "Wholesaler (Grosir)", status: "ACTIVE", created_at: now },
+  { _id: "ch-5", id: "ch-5", code: "INSTITUSI", name: "Institusi & Korporasi", status: "ACTIVE", created_at: now },
+];
+
+export const defaultRoutes = [
+  { _id: "route-mlg-01", id: "route-mlg-01", name: "Rute Malang Klojen - Senin", area_id: "area-mlg-01", status: "ACTIVE", created_at: now },
+  { _id: "route-mlg-02", id: "route-mlg-02", name: "Rute Malang Blimbing & Lowokwaru - Selasa", area_id: "area-mlg-01", status: "ACTIVE", created_at: now },
+  { _id: "route-mlg-03", id: "route-mlg-03", name: "Rute Malang Singosari & Sekitarnya - Rabu", area_id: "area-mlg-02", status: "ACTIVE", created_at: now },
+  { _id: "route-01", id: "route-01", name: "Rute Cianjur Kota - Senin", area_id: "area-cjr-01", status: "ACTIVE", created_at: now },
+  { _id: "route-02", id: "route-02", name: "Rute Cianjur Pasar - Selasa", area_id: "area-cjr-01", status: "ACTIVE", created_at: now },
+  { _id: "route-03", id: "route-03", name: "Rute Cipanas Wisata - Rabu", area_id: "area-cjr-02", status: "ACTIVE", created_at: now },
+  { _id: "route-04", id: "route-04", name: "Rute Tebet & Sekitarnya - Kamis", area_id: "area-jkt-01", status: "ACTIVE", created_at: now },
+];
+
+export const defaultProducts = [
+  { _id: "prod-01", id: "prod-01", product_code: "PRD-MHM-01", name: "Mahameru Mountain Spring Water", brand: "Mahameru", category: "AMDK", status: "ACTIVE", created_at: now },
+  { _id: "prod-02", id: "prod-02", product_code: "PRD-MHM-02", name: "Mahameru Fresh Tea", brand: "Mahameru", category: "Minuman", status: "ACTIVE", created_at: now },
+  { _id: "prod-03", id: "prod-03", product_code: "PRD-MHM-03", name: "Mahameru Sejati Filter", brand: "Mahameru", category: "SKM", status: "ACTIVE", created_at: now },
+  { _id: "prod-04", id: "prod-04", product_code: "PRD-MHM-04", name: "Mahameru Prima Kretek", brand: "Mahameru", category: "SKT", status: "ACTIVE", created_at: now },
+  { _id: "prod-05", id: "prod-05", product_code: "PRD-MHM-05", name: "Mahameru Bold Mild", brand: "Mahameru", category: "SPM", status: "ACTIVE", created_at: now },
+];
+
+export const defaultSkus = [
+  {
+    _id: "sku-01",
+    id: "sku-01",
+    product_id: "prod-01",
+    sku_code: "SKU-MHM-01",
+    barcode: "8991001001017",
+    name: "Mahameru Mineral 600ml (24 Botol/Dus)",
+    uom: "CTN",
+    unit: "CTN",
+    pack_size: 24,
+    cost_price: 38000,
+    base_price: 48000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-02",
+    id: "sku-02",
+    product_id: "prod-01",
+    sku_code: "SKU-MHM-02",
+    barcode: "8991001001024",
+    name: "Mahameru Mineral 330ml (24 Botol/Dus)",
+    uom: "CTN",
+    unit: "CTN",
+    pack_size: 24,
+    cost_price: 31000,
+    base_price: 38000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-03",
+    id: "sku-03",
+    product_id: "prod-01",
+    sku_code: "SKU-MHM-03",
+    barcode: "8991001001031",
+    name: "Mahameru Mineral 1500ml (12 Botol/Dus)",
+    uom: "CTN",
+    unit: "CTN",
+    pack_size: 12,
+    cost_price: 42000,
+    base_price: 52000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-04",
+    id: "sku-04",
+    product_id: "prod-01",
+    sku_code: "SKU-MHM-04",
+    barcode: "8991001001048",
+    name: "Mahameru Cup 220ml (48 Cup/Dus)",
+    uom: "CTN",
+    unit: "CTN",
+    pack_size: 48,
+    cost_price: 21000,
+    base_price: 26000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-05",
+    id: "sku-05",
+    product_id: "prod-01",
+    sku_code: "SKU-MHM-05",
+    barcode: "8991001001055",
+    name: "Mahameru Galon 19L (Refill)",
+    uom: "GLN",
+    unit: "GLN",
+    pack_size: 1,
+    cost_price: 14000,
+    base_price: 19000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-06",
+    id: "sku-06",
+    product_id: "prod-02",
+    sku_code: "SKU-MHM-06",
+    barcode: "8991001004355",
+    name: "Mahameru Fresh Tea Botol 350ml (24 Botol/Dus)",
+    uom: "CTN",
+    unit: "CTN",
+    pack_size: 24,
+    cost_price: 58000,
+    base_price: 72000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-07",
+    id: "sku-07",
+    product_id: "prod-03",
+    sku_code: "SKU-MHM-07",
+    barcode: "8991001001123",
+    name: "Mahameru Sejati Filter 12s (10 Bungkus/Slop)",
+    uom: "SLOP",
+    unit: "SLOP",
+    pack_size: 10,
+    cost_price: 175000,
+    base_price: 195000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-08",
+    id: "sku-08",
+    product_id: "prod-03",
+    sku_code: "SKU-MHM-08",
+    barcode: "8991001001161",
+    name: "Mahameru Sejati Filter 16s (10 Bungkus/Slop)",
+    uom: "SLOP",
+    unit: "SLOP",
+    pack_size: 10,
+    cost_price: 230000,
+    base_price: 255000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-09",
+    id: "sku-09",
+    product_id: "prod-04",
+    sku_code: "SKU-MHM-09",
+    barcode: "8991001002120",
+    name: "Mahameru Prima Kretek 12s (10 Bungkus/Slop)",
+    uom: "SLOP",
+    unit: "SLOP",
+    pack_size: 10,
+    cost_price: 130000,
+    base_price: 145000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+  {
+    _id: "sku-10",
+    id: "sku-10",
+    product_id: "prod-05",
+    sku_code: "SKU-MHM-10",
+    barcode: "8991001003167",
+    name: "Mahameru Bold Mild 16s (10 Bungkus/Slop)",
+    uom: "SLOP",
+    unit: "SLOP",
+    pack_size: 10,
+    cost_price: 245000,
+    base_price: 270000,
+    status: "ACTIVE",
+    imageUrl: "",
+    created_at: now,
+  },
+];
+
+export const defaultPrices = [
+  { _id: "prc-01", id: "prc-01", sku_id: "sku-01", price: 48000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-02", id: "prc-02", sku_id: "sku-01", price: 45000, price_type: "GROSIR", min_qty: 10, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-03", id: "prc-03", sku_id: "sku-02", price: 38000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-04", id: "prc-04", sku_id: "sku-03", price: 52000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-05", id: "prc-05", sku_id: "sku-04", price: 26000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-06", id: "prc-06", sku_id: "sku-04", price: 24500, price_type: "GROSIR", min_qty: 20, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-07", id: "prc-07", sku_id: "sku-05", price: 19000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-08", id: "prc-08", sku_id: "sku-06", price: 72000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-09", id: "prc-09", sku_id: "sku-07", price: 195000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-10", id: "prc-10", sku_id: "sku-08", price: 255000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-11", id: "prc-11", sku_id: "sku-09", price: 145000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+  { _id: "prc-12", id: "prc-12", sku_id: "sku-10", price: 270000, price_type: "DEFAULT", min_qty: 1, effective_date: "2026-01-01", status: "ACTIVE", created_at: now },
+];
+
+export const defaultPromos = [
+  {
+    _id: "promo-01",
+    id: "promo-01",
+    name: "Promo Cashback Grosir AMDK Mahameru 5%",
+    promo_code: "PROMO-CASHBACK-5",
+    promo_type: "PERCENTAGE",
+    discount_pct: 5,
+    discount_amount: 0,
+    start_date: "2026-01-01",
+    end_date: "2026-12-31",
+    status: "ACTIVE",
+    created_at: now,
+  },
+  {
+    _id: "promo-02",
+    id: "promo-02",
+    name: "Promo Peluncuran Fresh Tea Botol Rp 5.000",
+    promo_code: "PROMO-TEA-5K",
+    promo_type: "FIXED_AMOUNT",
+    sku_id: "sku-06",
+    discount_pct: 0,
+    discount_amount: 5000,
+    start_date: "2026-01-01",
+    end_date: "2026-12-31",
+    status: "ACTIVE",
+    created_at: now,
+  },
+  {
+    _id: "promo-03",
+    id: "promo-03",
+    name: "Promo Toko Baru Beli 10 Dus Gratis 1 Dus Cup",
+    promo_code: "PROMO-BUY10GET1",
+    promo_type: "BONUS_PRODUCT",
+    discount_pct: 0,
+    discount_amount: 0,
+    start_date: "2026-01-01",
+    end_date: "2026-12-31",
+    status: "ACTIVE",
+    created_at: now,
+  },
+];
+
+export const defaultOpenCallReasons = [
+  { _id: "ocr-1", id: "ocr-1", code: "OCR-01", name: "Toko Tutup / Libur", description: "Toko Tutup / Libur", status: "ACTIVE", created_at: now },
+  { _id: "ocr-2", id: "ocr-2", code: "OCR-02", name: "Pemilik / Penanggung Jawab Tidak di Tempat", description: "Pemilik / Penanggung Jawab Tidak di Tempat", status: "ACTIVE", created_at: now },
+  { _id: "ocr-3", id: "ocr-3", code: "OCR-03", name: "Stok Masih Banyak / Cukup", description: "Stok Masih Banyak / Cukup", status: "ACTIVE", created_at: now },
+  { _id: "ocr-4", id: "ocr-4", code: "OCR-04", name: "Kendala Keuangan / Kas Toko Sepi", description: "Kendala Keuangan / Kas Toko Sepi", status: "ACTIVE", created_at: now },
+  { _id: "ocr-5", id: "ocr-5", code: "OCR-05", name: "Ada Tagihan Jatuh Tempo Belum Lunas", description: "Ada Tagihan Jatuh Tempo Belum Lunas", status: "ACTIVE", created_at: now },
+  { _id: "ocr-6", id: "ocr-6", code: "OCR-06", name: "Harga Kalah Bersaing / Minta Diskon Tambahan", description: "Harga Kalah Bersaing / Minta Diskon Tambahan", status: "ACTIVE", created_at: now },
+  { _id: "ocr-7", id: "ocr-7", code: "OCR-07", name: "Beralih ke Merek Lain Sementara", description: "Beralih ke Merek Lain Sementara", status: "ACTIVE", created_at: now },
+];
+
+export const defaultSalesmen = [
+  {
+    _id: "sm-usr-sales1",
+    id: "sm-usr-sales1",
+    user_id: "usr-sales1",
+    name: "Rian Hidayat (Salesman)",
+    code: "SLS-CJR-01",
+    phone: "081311223344",
+    sales_type: "CANVASSER",
+    office_id: "off-3",
+    area_id: "area-cjr-01",
+    status: "ACTIVE",
+    created_at: now,
+  },
+  {
+    _id: "sm-usr-sales2",
+    id: "sm-usr-sales2",
+    user_id: "usr-sales",
+    name: "Budi Santoso (Sales Lapangan)",
+    code: "SLS-MLG-01",
+    phone: "081234567803",
+    sales_type: "CANVASSER",
+    office_id: "off-2",
+    area_id: "area-mlg-01",
+    status: "ACTIVE",
+    created_at: now,
+  },
+];
+
+export const defaultOutlets: any[] = [];
+
+export const defaultSalesOutlets: any[] = [];
+
+export async function seedMasterDataToFirestore() {
+  console.log("[MasterData] Checking Firestore master collections and upserting missing master data...");
+  try {
+    const upsertCollection = async (name: string, defaultItems: any[]) => {
+      const snap = await getDocs(collection(firestoreDb, name));
+      const existingIds = new Set(snap.docs.map(d => d.id));
+      const missing = defaultItems.filter(item => !existingIds.has(item._id || item.id));
+      if (missing.length > 0) {
+        console.log(`[MasterData] Adding ${missing.length} missing items to '${name}' in Cloud Firestore...`);
+        const batch = writeBatch(firestoreDb);
+        for (const item of missing) {
+          batch.set(doc(firestoreDb, name, item._id || item.id), item);
+        }
+        await batch.commit();
+        console.log(`[MasterData] Collection '${name}' updated with ${missing.length} new items.`);
+      }
+    };
+
+    await upsertCollection("offices", defaultOffices);
+    await upsertCollection("provinces", defaultProvinces);
+    await upsertCollection("regencies", defaultRegencies);
+    await upsertCollection("areas", defaultAreas);
+    await upsertCollection("districts", defaultDistricts);
+    await upsertCollection("villages", defaultVillages);
+    await upsertCollection("channels", defaultChannels);
+    await upsertCollection("routes", defaultRoutes);
+    await upsertCollection("products", defaultProducts);
+    await upsertCollection("skus", defaultSkus);
+    await upsertCollection("prices", defaultPrices);
+    await upsertCollection("promos", defaultPromos);
+    await upsertCollection("open_call_reasons", defaultOpenCallReasons);
+    await upsertCollection("salesmen", defaultSalesmen);
+    await upsertCollection("outlets", defaultOutlets);
+    await upsertCollection("sales_outlets", defaultSalesOutlets);
+  } catch (err) {
+    console.error("[MasterData] Error during master data seeding:", err);
+  }
+}
