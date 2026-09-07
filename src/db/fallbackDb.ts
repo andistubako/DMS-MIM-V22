@@ -1,5 +1,64 @@
 import { db } from "../../server/data.js";
 
+function parseCondition(cond: any): { field: string | null; val: any } | null {
+  if (!cond) return null;
+  const chunks = cond.queryChunks || [];
+  let field: string | null = null;
+  let val: any = undefined;
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (chunk && chunk.name) {
+      field = chunk.name;
+    }
+    if (chunk && chunk.value !== undefined && typeof chunk.value !== "object") {
+      val = chunk.value;
+    }
+  }
+  return { field, val };
+}
+
+function matchItem(item: any, condition: any): boolean {
+  if (!condition) return true;
+  const parsed = parseCondition(condition);
+  if (!parsed || !parsed.field || parsed.val === undefined) return true;
+
+  const targetVal = parsed.val;
+  const field = parsed.field;
+
+  // Check direct or camelCase or snake_case key
+  if (item[field] !== undefined) {
+    if (typeof targetVal === "string" && typeof item[field] === "string") {
+      return item[field].toLowerCase() === targetVal.toLowerCase();
+    }
+    return item[field] === targetVal;
+  }
+
+  // Common field mappings
+  const fieldMapping: Record<string, string[]> = {
+    email: ["email"],
+    id: ["id", "_id"],
+    productId: ["product_id", "productId"],
+    officeId: ["office_id", "officeId"],
+    areaId: ["area_id", "areaId"],
+    status: ["status"],
+    skuCode: ["sku_code", "skuCode"],
+    barcode: ["barcode"],
+    userId: ["user_id", "userId"],
+  };
+
+  const candidates = fieldMapping[field] || [field];
+  for (const c of candidates) {
+    if (item[c] !== undefined) {
+      if (typeof targetVal === "string" && typeof item[c] === "string") {
+        return item[c].toLowerCase() === targetVal.toLowerCase();
+      }
+      return item[c] === targetVal;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Fallback in-memory query adapter for Drizzle sqlDb when secondary database is inactive.
  * Connects directly to memory cache synced with Google Cloud Firestore as SSOT.
@@ -9,24 +68,77 @@ export function createFallbackSqlDb(): any {
     findMany: (opts?: any) => Promise<any[]>;
     findFirst: (opts?: any) => Promise<any | null>;
   }> = {
+    products: {
+      findMany: async (opts?: any) => {
+        let list = (db.products || []).map((p: any) => ({
+          id: p._id || p.id,
+          productCode: p.product_code || p.code || "",
+          name: p.name || "",
+          category: p.category || "",
+          brand: p.brand || "",
+          status: p.status || "ACTIVE",
+          imageUrl: p.imageUrl || p.image_url || "",
+          createdAt: p.created_at ? new Date(p.created_at) : new Date(),
+          metadata: p.metadata || {},
+        }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
+      },
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.products.findMany(opts);
+        return list[0] || null;
+      },
+    },
+    skus: {
+      findMany: async (opts?: any) => {
+        let list = (db.skus || []).map((s: any) => ({
+          id: s._id || s.id,
+          productId: s.product_id || s.productId || "",
+          skuCode: s.sku_code || s.skuCode || "",
+          barcode: s.barcode || "",
+          skuName: s.name || s.skuName || "",
+          uom: s.uom || s.unit || "PCS",
+          packSize: s.pack_size ?? s.packSize ?? 1,
+          basePrice: s.base_price ?? s.basePrice ?? 0,
+          status: s.status || "ACTIVE",
+          imageUrl: s.imageUrl || s.image_url || "",
+          createdAt: s.created_at ? new Date(s.created_at) : new Date(),
+          metadata: s.metadata || {},
+        }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
+      },
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.skus.findMany(opts);
+        return list[0] || null;
+      },
+    },
     channels: {
-      findMany: async () => {
-        return (db.channels || []).map((c: any) => ({
+      findMany: async (opts?: any) => {
+        let list = (db.channels || []).map((c: any) => ({
           id: c._id || c.id,
           channelName: c.channel_name || c.name || "",
           channelCode: c.channel_code || c.code || "",
           status: c.status || "ACTIVE",
           metadata: c.metadata || {},
         }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
       },
-      findFirst: async () => {
-        const list = await queryHandlers.channels.findMany();
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.channels.findMany(opts);
         return list[0] || null;
       },
     },
     areas: {
-      findMany: async () => {
-        return (db.areas || []).map((a: any) => {
+      findMany: async (opts?: any) => {
+        let list = (db.areas || []).map((a: any) => {
           const office = (db.offices || []).find((o: any) => (o._id || o.id) === a.office_id);
           const regency = (db.regencies || []).find((r: any) => (r._id || r.id) === a.regency_id);
           return {
@@ -42,15 +154,19 @@ export function createFallbackSqlDb(): any {
             regency: regency ? { name: regency.name || "" } : null,
           };
         });
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
       },
-      findFirst: async () => {
-        const list = await queryHandlers.areas.findMany();
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.areas.findMany(opts);
         return list[0] || null;
       },
     },
     offices: {
-      findMany: async () => {
-        return (db.offices || []).map((o: any) => ({
+      findMany: async (opts?: any) => {
+        let list = (db.offices || []).map((o: any) => ({
           id: o._id || o.id,
           officeName: o.office_name || o.name || "",
           officeCode: o.office_code || o.code || "",
@@ -62,15 +178,19 @@ export function createFallbackSqlDb(): any {
           status: o.status || "ACTIVE",
           createdAt: o.created_at ? new Date(o.created_at) : new Date(),
         }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
       },
-      findFirst: async () => {
-        const list = await queryHandlers.offices.findMany();
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.offices.findMany(opts);
         return list[0] || null;
       },
     },
     users: {
-      findMany: async () => {
-        return (db.users || []).map((u: any) => ({
+      findMany: async (opts?: any) => {
+        let list = (db.users || []).map((u: any) => ({
           id: u._id || u.id,
           name: u.name || "",
           email: u.email || "",
@@ -79,18 +199,49 @@ export function createFallbackSqlDb(): any {
           phone: u.phone || "",
           officeId: u.office_id || "",
           areaId: u.area_id || "",
+          passwordHash: u.password_hash || u.passwordHash || "",
           createdAt: u.created_at ? new Date(u.created_at) : new Date(),
           metadata: u.metadata || {},
         }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
       },
-      findFirst: async () => {
-        const list = await queryHandlers.users.findMany();
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.users.findMany(opts);
+        return list[0] || null;
+      },
+    },
+    salesmen: {
+      findMany: async (opts?: any) => {
+        let list = (db.salesmen || []).map((s: any) => ({
+          id: s._id || s.id,
+          userId: s.user_id || s.userId || s._id || s.id,
+          code: s.code || "",
+          name: s.name || "",
+          email: s.email || "",
+          phone: s.phone || "",
+          officeId: s.office_id || s.officeId || "",
+          areaId: s.area_id || s.areaId || "",
+          status: s.status || "ACTIVE",
+          targetDailyCalls: s.target_daily_calls || 15,
+          targetMonthlySales: s.target_monthly_sales || 50000000,
+          createdAt: s.created_at ? new Date(s.created_at) : new Date(),
+        }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
+      },
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.salesmen.findMany(opts);
         return list[0] || null;
       },
     },
     outlets: {
-      findMany: async () => {
-        return (db.outlets || []).map((o: any) => ({
+      findMany: async (opts?: any) => {
+        let list = (db.outlets || []).map((o: any) => ({
           id: o._id || o.id,
           outletName: o.outlet_name || "",
           outletCode: o.outlet_code || "",
@@ -116,9 +267,13 @@ export function createFallbackSqlDb(): any {
             ...(o.metadata || {}),
           },
         }));
+        if (opts?.where) {
+          list = list.filter((item) => matchItem(item, opts.where));
+        }
+        return list;
       },
-      findFirst: async () => {
-        const list = await queryHandlers.outlets.findMany();
+      findFirst: async (opts?: any) => {
+        const list = await queryHandlers.outlets.findMany(opts);
         return list[0] || null;
       },
     },
