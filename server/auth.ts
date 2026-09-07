@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import { User } from "./data.js";
+import { User, db } from "./data.js";
 import { firestoreDb } from "./firebase.js";
 import {
   doc,
@@ -62,56 +62,71 @@ export async function getUserByIdFromFirestore(userId: string): Promise<User | n
   try {
     const docRef = doc(firestoreDb, "users", userId);
     const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    const data = snap.data() as any;
-    if (data.status !== "ACTIVE") return null;
-    return {
-      _id: snap.id,
-      id: snap.id,
-      name: data.name,
-      email: data.email,
-      password_hash: data.password_hash || "",
-      role: data.role,
-      phone: data.phone || "",
-      status: data.status,
-      office_id: data.office_id,
-      area_id: data.area_id,
-      created_at: data.created_at || new Date().toISOString(),
-    };
+    if (snap.exists()) {
+      const data = snap.data() as any;
+      if (data.status !== "ACTIVE") return null;
+      return {
+        _id: snap.id,
+        id: snap.id,
+        name: data.name,
+        email: data.email,
+        password_hash: data.password_hash || "",
+        role: data.role,
+        phone: data.phone || "",
+        status: data.status,
+        office_id: data.office_id,
+        area_id: data.area_id,
+        created_at: data.created_at || new Date().toISOString(),
+      };
+    }
   } catch (err) {
     console.error("getUserByIdFromFirestore error:", err);
-    return null;
   }
+
+  // Fallback to in-memory state synced from Firestore
+  const memoryUser = (db.users || []).find((u: any) => (u._id || u.id) === userId);
+  if (memoryUser && memoryUser.status === "ACTIVE") {
+    return memoryUser as User;
+  }
+  return null;
 }
 
 export async function getUserByEmailFromFirestore(email: string): Promise<User | null> {
+  const normEmail = email.toLowerCase().trim();
   try {
     const q = query(
       collection(firestoreDb, "users"),
-      where("email", "==", email.toLowerCase().trim()),
+      where("email", "==", normEmail),
       limit(1)
     );
     const snap = await getDocs(q);
-    if (snap.empty) return null;
-    const firstDoc = snap.docs[0];
-    const data = firstDoc.data() as any;
-    return {
-      _id: firstDoc.id,
-      id: firstDoc.id,
-      name: data.name,
-      email: data.email,
-      password_hash: data.password_hash || "",
-      role: data.role,
-      phone: data.phone || "",
-      status: data.status,
-      office_id: data.office_id,
-      area_id: data.area_id,
-      created_at: data.created_at || new Date().toISOString(),
-    };
+    if (!snap.empty) {
+      const firstDoc = snap.docs[0];
+      const data = firstDoc.data() as any;
+      return {
+        _id: firstDoc.id,
+        id: firstDoc.id,
+        name: data.name,
+        email: data.email,
+        password_hash: data.password_hash || "",
+        role: data.role,
+        phone: data.phone || "",
+        status: data.status,
+        office_id: data.office_id,
+        area_id: data.area_id,
+        created_at: data.created_at || new Date().toISOString(),
+      };
+    }
   } catch (err) {
     console.error("getUserByEmailFromFirestore error:", err);
-    return null;
   }
+
+  // Fallback to in-memory state synced from Firestore
+  const memoryUser = (db.users || []).find((u: any) => (u.email || "").toLowerCase().trim() === normEmail);
+  if (memoryUser) {
+    return memoryUser as User;
+  }
+  return null;
 }
 
 export async function rotateRefreshToken(refreshToken: string | undefined) {

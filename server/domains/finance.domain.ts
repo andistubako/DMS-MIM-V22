@@ -1,5 +1,7 @@
 import { collection, query, where, getDocs, doc, setDoc, getDoc } from "firebase/firestore";
 import { firestoreDb } from "../firebase.js";
+import { db } from "../data.js";
+import { syncSingleDoc } from "../persistence.js";
 
 export type ReconciliationStatus = "BALANCED" | "SURPLUS" | "DEFICIT";
 
@@ -45,21 +47,30 @@ export async function calculateTriangularReconciliation(
   dateStr: string
 ): Promise<TriangularReconciliationResult> {
   // 1. Calculate Sales Totals from `transactions`
-  const txnsRef = collection(firestoreDb, "transactions");
-  const qTx = query(
-    txnsRef,
-    where("salesman_id", "==", salesmanId),
-    where("transaction_date", "==", dateStr)
-  );
-  const txSnap = await getDocs(qTx);
+  let txList: any[] = [];
+  try {
+    const txnsRef = collection(firestoreDb, "transactions");
+    const qTx = query(
+      txnsRef,
+      where("salesman_id", "==", salesmanId),
+      where("transaction_date", "==", dateStr)
+    );
+    const txSnap = await getDocs(qTx);
+    txSnap.forEach((d) => txList.push(d.data()));
+  } catch {
+    txList = (db.transactions || []).filter(
+      (t: any) =>
+        t.salesman_id === salesmanId &&
+        ((t.transaction_date || t.date || "").slice(0, 10) === dateStr)
+    );
+  }
 
   let cashSales = 0;
   let creditSales = 0;
   let transferSales = 0;
   let totalSalesUnits = 0;
 
-  txSnap.forEach((d) => {
-    const data = d.data();
+  txList.forEach((data) => {
     if (data.status === "CANCELLED") return;
     const method = String(data.payment_method || "CASH").toUpperCase();
     const amount = Number(data.grand_total || data.total_amount || 0);
@@ -75,12 +86,20 @@ export async function calculateTriangularReconciliation(
 
   // 2. Calculate Stock Totals from `stock_handovers` and `stock_returns`
   let totalHandoverUnits = 0;
-  const hoRef = collection(firestoreDb, "stock_handovers");
-  const qHo = query(hoRef, where("salesman_id", "==", salesmanId), where("date", "==", dateStr));
-  const hoSnap = await getDocs(qHo);
-  hoSnap.forEach((d) => {
-    const data = d.data();
-    if (data.status === "CONFIRMED") {
+  let hoList: any[] = [];
+  try {
+    const hoRef = collection(firestoreDb, "stock_handovers");
+    const qHo = query(hoRef, where("salesman_id", "==", salesmanId), where("date", "==", dateStr));
+    const hoSnap = await getDocs(qHo);
+    hoSnap.forEach((d) => hoList.push(d.data()));
+  } catch {
+    hoList = (db.stock_handovers || []).filter(
+      (h: any) => h.salesman_id === salesmanId && ((h.date || "").slice(0, 10) === dateStr)
+    );
+  }
+
+  hoList.forEach((data) => {
+    if (data.status === "CONFIRMED" || data.status === "APPROVED") {
       const items = data.items || [];
       for (const it of items) {
         totalHandoverUnits += Number(it.quantity || 0);
@@ -89,12 +108,20 @@ export async function calculateTriangularReconciliation(
   });
 
   let totalReturnUnits = 0;
-  const retRef = collection(firestoreDb, "stock_returns");
-  const qRet = query(retRef, where("salesman_id", "==", salesmanId), where("date", "==", dateStr));
-  const retSnap = await getDocs(qRet);
-  retSnap.forEach((d) => {
-    const data = d.data();
-    if (data.status === "CONFIRMED") {
+  let retList: any[] = [];
+  try {
+    const retRef = collection(firestoreDb, "stock_returns");
+    const qRet = query(retRef, where("salesman_id", "==", salesmanId), where("date", "==", dateStr));
+    const retSnap = await getDocs(qRet);
+    retSnap.forEach((d) => retList.push(d.data()));
+  } catch {
+    retList = (db.stock_returns || []).filter(
+      (r: any) => r.salesman_id === salesmanId && ((r.date || "").slice(0, 10) === dateStr)
+    );
+  }
+
+  retList.forEach((data) => {
+    if (data.status === "CONFIRMED" || data.status === "APPROVED") {
       const items = data.items || [];
       for (const it of items) {
         totalReturnUnits += Number(it.quantity || 0);
@@ -112,19 +139,38 @@ export async function calculateTriangularReconciliation(
 
   // 3. Calculate Cash Collections & Deposits
   let receivableCollected = 0;
-  const payRef = collection(firestoreDb, "installment_payments");
-  const qPay = query(payRef, where("salesman_id", "==", salesmanId), where("payment_date", "==", dateStr));
-  const paySnap = await getDocs(qPay);
-  paySnap.forEach((d) => {
-    receivableCollected += Number(d.data().amount || 0);
-  });
+  try {
+    const payRef = collection(firestoreDb, "installment_payments");
+    const qPay = query(payRef, where("salesman_id", "==", salesmanId), where("payment_date", "==", dateStr));
+    const paySnap = await getDocs(qPay);
+    paySnap.forEach((d) => {
+      receivableCollected += Number(d.data().amount || 0);
+    });
+  } catch {
+    // Check in db.receivables or customer payments
+    const payments = (db.receivables || []).filter(
+      (r: any) => r.salesman_id === salesmanId && ((r.paid_at || "").slice(0, 10) === dateStr)
+    );
+    payments.forEach((p: any) => {
+      receivableCollected += Number(p.amount_paid || p.paid_amount || 0);
+    });
+  }
 
   let actualDeposit = 0;
-  const depRef = collection(firestoreDb, "cash_deposits");
-  const qDep = query(depRef, where("salesman_id", "==", salesmanId), where("date", "==", dateStr));
-  const depSnap = await getDocs(qDep);
-  depSnap.forEach((d) => {
-    actualDeposit += Number(d.data().actual_deposited || d.data().amount || 0);
+  let depList: any[] = [];
+  try {
+    const depRef = collection(firestoreDb, "cash_deposits");
+    const qDep = query(depRef, where("salesman_id", "==", salesmanId), where("date", "==", dateStr));
+    const depSnap = await getDocs(qDep);
+    depSnap.forEach((d) => depList.push(d.data()));
+  } catch {
+    depList = (db.cash_deposits || []).filter(
+      (c: any) => c.salesman_id === salesmanId && ((c.date || "").slice(0, 10) === dateStr)
+    );
+  }
+
+  depList.forEach((d) => {
+    actualDeposit += Number(d.actual_deposited || d.amount || 0);
   });
 
   const expectedDeposit = cashSales + receivableCollected;
@@ -169,7 +215,7 @@ export async function calculateTriangularReconciliation(
   // Persist record to `daily_reconciliations`
   try {
     const docId = `REC_${salesmanId}_${dateStr}`;
-    await setDoc(doc(firestoreDb, "daily_reconciliations", docId), result, { merge: true });
+    await syncSingleDoc("daily_reconciliations", docId, result);
   } catch (err) {
     console.warn("[FinanceDomain] Error saving daily reconciliation:", err);
   }

@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, doc, updateDoc, getDoc } from "firebase/firestore";
 import { firestoreDb } from "../firebase.js";
+import { db } from "../data.js";
 
 export type OutletLifecycleStatus = "PROSPECT" | "NOO" | "REPEAT" | "ACTIVE" | "DORMANT";
 
@@ -29,12 +30,21 @@ const DORMANT_THRESHOLD_DAYS = 56; // Canonical: 56 days
  * Draft/cancelled transactions are ignored.
  */
 export async function calculateOutletLifecycle(outletId: string): Promise<OutletLifecycleSummary> {
-  const txnsRef = collection(firestoreDb, "transactions");
-  const q = query(
-    txnsRef,
-    where("outlet_id", "==", outletId)
-  );
-  const snap = await getDocs(q);
+  let txns: any[] = [];
+  try {
+    const txnsRef = collection(firestoreDb, "transactions");
+    const q = query(
+      txnsRef,
+      where("outlet_id", "==", outletId)
+    );
+    const snap = await getDocs(q);
+    snap.forEach((docSnap) => {
+      txns.push(docSnap.data());
+    });
+  } catch (err) {
+    // Fallback to in-memory synced transactions
+    txns = (db.transactions || []).filter((t: any) => t.outlet_id === outletId);
+  }
 
   let completedCount = 0;
   let firstDate: string | null = null;
@@ -42,8 +52,7 @@ export async function calculateOutletLifecycle(outletId: string): Promise<Outlet
   let totalVolume = 0;
   let totalRevenue = 0;
 
-  snap.forEach((docSnap) => {
-    const t = docSnap.data();
+  txns.forEach((t) => {
     // Only count COMPLETED or PAID transactions. Ignore DRAFT and CANCELLED.
     const status = String(t.status || "").toUpperCase();
     if (status === "CANCELLED" || status === "DRAFT") return;

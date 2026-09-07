@@ -11,6 +11,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./data.js";
+import { defaultOutlets, defaultSalesOutlets } from "./masterDataSeed.js";
 
 // Entity mapping from route parameters to Firestore collection names and memory keys
 export const ENTITY_COLLECTION_MAP: Record<string, { col: string; dbKey: keyof typeof db }> = {
@@ -77,7 +78,13 @@ export async function loadMasterDataFromFirestore() {
       } else if (colName === "system_settings" && items.length > 0) {
         db.settings = items[0];
       } else if (colName in db) {
-        (db as any)[colName] = items;
+        if (items.length === 0 && colName === "outlets") {
+          (db as any)[colName] = [...defaultOutlets];
+        } else if (items.length === 0 && colName === "sales_outlets") {
+          (db as any)[colName] = [...defaultSalesOutlets];
+        } else {
+          (db as any)[colName] = items;
+        }
       }
     } catch (err) {
       console.warn(`[MasterDataService] Failed loading '${colName}' from Firestore:`, err);
