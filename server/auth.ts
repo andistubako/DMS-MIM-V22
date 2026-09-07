@@ -185,6 +185,26 @@ export async function authMiddleware(
   const session = activeSessions.get(token);
 
   if (!session) {
+    // Check if token is a Firebase ID Token (JWT)
+    if (token.split('.').length === 3) {
+      try {
+        const payloadBase64 = token.split('.')[1];
+        const payloadJson = Buffer.from(payloadBase64, 'base64').toString('utf8');
+        const payload = JSON.parse(payloadJson);
+        const uid = payload.user_id || payload.sub;
+        const exp = Number(payload.exp || 0) * 1000;
+
+        if (uid && exp > Date.now()) {
+          const fbUser = await getUserByIdFromFirestore(uid);
+          if (fbUser) {
+            req.user = fbUser;
+            return next();
+          }
+        }
+      } catch (err) {
+        // Fall through to 401
+      }
+    }
     return res.status(401).json({ detail: "Sesi tidak valid atau telah kedaluwarsa." });
   }
 

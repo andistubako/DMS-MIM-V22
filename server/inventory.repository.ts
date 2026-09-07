@@ -1,6 +1,7 @@
 import { eq, and, sql } from "drizzle-orm";
 import { sqlDb } from "../src/db/index.js";
-import { isCloudSqlConnected, syncDocToPostgres } from "./cloudsqlSync.js";
+const isCloudSqlConnected = false;
+const syncDocToPostgres = (_col: string, _doc: any) => Promise.resolve();
 import { syncSingleDoc } from "./persistence.js";
 import { db } from "./data.js";
 import { inventory, stockMovements, salesStockLedgers, auditLogs } from "../src/db/schema.js";

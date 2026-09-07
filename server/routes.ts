@@ -73,14 +73,15 @@ import {
 import { resolveSkuInfo, formatSkuItemsSummary } from "./skuResolver.js";
 import { syncToFirestore, getSyncStats, deleteSingleDoc, syncSingleDoc, ALL_SYNC_COLLECTIONS, purgeAllFirestoreData, getFirestoreSyncStats } from "./persistence.js";
 import { executeFullMigrationToFirestore } from "./executeFullMigrationToFirestore.js";
-import {
-  migrateAllToCloudSql,
-  getCloudSqlStats,
-  initializeCloudSqlTables,
-  testCloudSqlConnection,
-  syncDocToPostgres,
-  deleteDocFromPostgres,
-} from "./cloudsqlSync.js";
+import { calculateTriangularReconciliation } from "./domains/finance.domain.js";
+import { calculateOutletLifecycle, syncOutletLifecycleToFirestore } from "./domains/outlets.domain.js";
+const isCloudSqlConnected = false;
+const getCloudSqlStats = async () => ({ connected: false, mode: "FIRESTORE_ONLY_SSOT", message: "Google Cloud Firestore is the Single Source of Truth" });
+const migrateAllToCloudSql = async () => ({ success: true, message: "Firestore is SSOT. Secondary DB migration skipped.", totalRecords: 0 });
+const initializeCloudSqlTables = async () => {};
+const testCloudSqlConnection = async () => false;
+const syncDocToPostgres = (_col: string, _doc: any) => Promise.resolve();
+const deleteDocFromPostgres = (_col: string, _id: string) => Promise.resolve();
 import {
   AuthenticatedRequest,
   generateTokens,
@@ -99,7 +100,7 @@ export const apiRouter = Router();
 
 import { inventory as inventorySchema } from "../src/db/schema.js";
 
-import { isCloudSqlConnected } from "./cloudsqlSync.js";
+
 
 async function refreshInventoryCache() {
   if (!isCloudSqlConnected) return;
@@ -964,14 +965,7 @@ export function calculateOutletStatus(
   if (!completedTransactionCount || completedTransactionCount <= 0) {
     return "PROSPECT";
   }
-  if (completedTransactionCount === 1) {
-    return "NOO";
-  }
-  if (completedTransactionCount === 2) {
-    return "REPEAT";
-  }
 
-  // completedTransactionCount >= 3
   if (lastCompletedTransactionAt) {
     const lastDate = new Date(lastCompletedTransactionAt);
     const diffMs = currentDate.getTime() - lastDate.getTime();
@@ -979,6 +973,13 @@ export function calculateOutletStatus(
     if (diffDays >= 56) {
       return "DORMANT";
     }
+  }
+
+  if (completedTransactionCount === 1) {
+    return "NOO";
+  }
+  if (completedTransactionCount === 2) {
+    return "REPEAT";
   }
 
   return "ACTIVE";
@@ -4351,6 +4352,38 @@ apiRouter.get("/outlets/kpi", authMiddleware, async (req: AuthenticatedRequest, 
   res.json(summary);
 });
 
+apiRouter.post("/outlets/recalculate-lifecycle", authMiddleware, requireRoles("ADMIN", "SUPERVISOR", "OWNER"), async (req: AuthenticatedRequest, res) => {
+  try {
+    await recalculateAllOutletStatusesAsync();
+    const summary = {
+      total: db.outlets.length,
+      prospect: db.outlets.filter((o) => o.lifecycle_status === "PROSPECT").length,
+      noo: db.outlets.filter((o) => o.lifecycle_status === "NOO").length,
+      repeat: db.outlets.filter((o) => o.lifecycle_status === "REPEAT").length,
+      active: db.outlets.filter((o) => o.lifecycle_status === "ACTIVE").length,
+      dormant: db.outlets.filter((o) => o.lifecycle_status === "DORMANT").length,
+    };
+    recordAuditLog(req.user!._id, "RECALCULATE_OUTLET_LIFECYCLE", "outlets", "all", summary);
+    res.json({
+      success: true,
+      message: "Kalkulasi ulang lifecycle seluruh outlet berhasil disinkronkan ke Firestore.",
+      summary,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err?.message || "Gagal mengkalkulasi ulang lifecycle outlet." });
+  }
+});
+
+apiRouter.get("/outlets/:id/lifecycle", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const outletId = req.params.id;
+    const summary = await calculateOutletLifecycle(outletId);
+    res.json({ success: true, data: summary });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err?.message || "Gagal mengambil data lifecycle outlet." });
+  }
+});
+
 apiRouter.get("/outlets", authMiddleware, async (req: AuthenticatedRequest, res) => {
   const q = ((req.query.q as string) || "").toLowerCase().trim();
   const status = req.query.status as string; // ACTIVE, INACTIVE, ARCHIVED, PENDING
@@ -5708,9 +5741,9 @@ apiRouter.post("/transactions", authMiddleware, async (req: AuthenticatedRequest
     });
   }
 
-  // Check Idempotency to prevent duplicate transaction submissions
+  // Check Idempotency to prevent duplicate transaction submissions (Firestore-backed)
   const idempotencyKey = (req.headers["x-idempotency-key"] as string) || req.body?.idempotency_key;
-  const idempCheck = checkIdempotency(idempotencyKey);
+  const idempCheck = await checkIdempotency(idempotencyKey);
   if (idempCheck.isDuplicate) {
     return res.json(idempCheck.cachedResponse);
   }
@@ -5949,7 +5982,7 @@ apiRouter.post("/transactions", authMiddleware, async (req: AuthenticatedRequest
       };
 
       if (idempotencyKey) {
-        recordIdempotency(idempotencyKey, responsePayload);
+        await recordIdempotency(idempotencyKey, responsePayload);
       }
 
       return responsePayload;
@@ -13369,6 +13402,25 @@ apiRouter.post("/reconciliations/daily/approve", authMiddleware, requireRoles("A
     message: `Rekonsiliasi harian ${recCode} berhasil disetujui.`,
     reconciliation: newRec,
   });
+});
+
+apiRouter.get("/reconciliations/triangular-canonical", authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const businessDate = (req.query.business_date as string) || (req.query.date as string) || getTodayWIB();
+    const salesmanId = req.user!.role === "SALES" ? req.user!._id : (req.query.salesman_id as string);
+
+    if (!salesmanId) {
+      return res.status(400).json({ success: false, message: "salesman_id wajib diisi atau dipilih." });
+    }
+
+    const result = await calculateTriangularReconciliation(salesmanId, businessDate);
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err?.message || "Gagal mengkalkulasi rekonsiliasi segitiga kanonikal." });
+  }
 });
 
 // Global API Error Handling Middleware

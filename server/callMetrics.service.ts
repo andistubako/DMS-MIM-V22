@@ -1,7 +1,7 @@
 import { sqlDb } from "../src/db/index.js";
 import { sql } from "drizzle-orm";
 import { db } from "./data.js";
-import { isCloudSqlConnected } from "./cloudsqlSync.js";
+const isCloudSqlConnected = false;
 
 /** Canonical DMS call metrics, derived from PostgreSQL facts. */
 export async function getCallMetrics(date: string, salesmanId?: string, areaId?: string) {

@@ -1,5 +1,5 @@
 import { sqlDb } from "../src/db/index.js";
-import { isCloudSqlConnected } from "./cloudsqlSync.js";
+const isCloudSqlConnected = false;
 import { sql } from "drizzle-orm";
 import { db } from "./data.js";
 

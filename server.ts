@@ -19,6 +19,7 @@ import { seedInventoryToFirestore } from "./server/inventorySeed.js";
 import { seedFieldOperationsToFirestore } from "./server/fieldOperationsSeed.js";
 import { seedFinancialsToFirestore } from "./server/financialSeed.js";
 import { loadAllFromFirestore } from "./server/persistence.js";
+import { bootstrapCanonicalConfig } from "./server/canonicalConfig.js";
 import masterDataRouter from "./server/masterData.routes.js";
 import inventoryRouter from "./server/inventory.routes.js";
 
@@ -28,6 +29,7 @@ async function startServer() {
   // Google Cloud Firestore: Primary Database & Single Source of Truth
   console.log("[Database] Operating with Google Cloud Firestore as the Single Source of Truth (SSOT).");
   try {
+    await bootstrapCanonicalConfig();
     await seedFirestoreInitialData();
     await seedMasterDataToFirestore();
     await loadMasterDataFromFirestore();

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import fs from "fs";
 import path from "path";
+import { checkFirestoreIdempotency, recordFirestoreIdempotency } from "./firestoreIdempotency.js";
 
 export interface User { id?: string;
   _id: string;
@@ -692,24 +693,14 @@ export async function executeWithMutex<T>(lockKey: string, fn: () => Promise<T> 
   }
 }
 
-export function checkIdempotency(key: string | undefined): { isDuplicate: boolean; cachedResponse?: any } {
+export async function checkIdempotency(key: string | undefined): Promise<{ isDuplicate: boolean; cachedResponse?: any }> {
   if (!key) return { isDuplicate: false };
-  const existing = processedIdempotencyKeys.get(key);
-  if (existing) {
-    return { isDuplicate: true, cachedResponse: existing.response };
-  }
-  return { isDuplicate: false };
+  return checkFirestoreIdempotency(key);
 }
 
-export function recordIdempotency(key: string | undefined, response: any) {
+export async function recordIdempotency(key: string | undefined, response: any) {
   if (!key) return;
-  processedIdempotencyKeys.set(key, { timestamp: Date.now(), response });
-  if (processedIdempotencyKeys.size > 1000) {
-    const cutoff = Date.now() - 10 * 60 * 1000;
-    for (const [k, v] of processedIdempotencyKeys.entries()) {
-      if (v.timestamp < cutoff) processedIdempotencyKeys.delete(k);
-    }
-  }
+  return recordFirestoreIdempotency(key, response);
 }
 
 export function ensureDefaultUsers() {
