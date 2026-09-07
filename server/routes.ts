@@ -13329,15 +13329,25 @@ apiRouter.get("/reconciliations/daily", authMiddleware, (req: AuthenticatedReque
     const stockBalanced = totalStockVariance === 0;
     const cashBalanced = cashVariance === 0;
 
+    const existingRec = (db.daily_reconciliations || []).find(
+      (r) => r.salesman_id === sales._id && r.business_date === business_date
+    );
+
     return {
       salesman_id: sales._id,
       salesman_name: sales.name,
       salesman_code: (sales as any).code || sales._id,
       business_date,
       overall_status: stockBalanced && cashBalanced ? "BALANCED" : "VARIANCE",
+      status: existingRec?.status || "PENDING",
+      reconciliation_code: existingRec?.reconciliation_code || null,
+      approved_by: existingRec?.approved_by || null,
+      approved_at: existingRec?.approved_at || null,
+      notes: existingRec?.notes || "",
       stock_summary: {
         total_skus: stockItems.length,
         is_balanced: stockBalanced,
+        stock_status: stockBalanced ? "BALANCED" : "VARIANCE",
         total_variance_units: totalStockVariance,
         items: stockItems,
       },
@@ -13349,6 +13359,7 @@ apiRouter.get("/reconciliations/daily", authMiddleware, (req: AuthenticatedReque
         actual_deposited_cash: actualDeposits,
         variance: cashVariance,
         is_balanced: cashBalanced,
+        cash_status: cashBalanced ? "BALANCED" : "VARIANCE",
       },
     };
   });

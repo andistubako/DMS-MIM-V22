@@ -890,19 +890,33 @@ export default function FinancePage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            <span className="text-[11px] font-semibold text-slate-600">
-                              {rec.status || "PENDING"}
-                            </span>
+                            {rec.status === "APPROVED" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <CheckCircle2 size={10} />
+                                DISETUJUI
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                MENUNGGU
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setReconcileTarget(rec)}
-                              className="h-7 text-[11px] font-bold text-navy border-navy/30 hover:bg-navy/5"
-                            >
-                              Approve Tutup Buku
-                            </Button>
+                            {rec.status === "APPROVED" ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50/80 px-2.5 py-1 rounded-md border border-emerald-200">
+                                <CheckCircle2 size={12} />
+                                Terverifikasi
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setReconcileTarget(rec)}
+                                className="h-7 text-[11px] font-bold text-navy border-navy/30 hover:bg-navy/5"
+                              >
+                                Approve Tutup Buku
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
