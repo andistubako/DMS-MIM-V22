@@ -78,13 +78,7 @@ export async function loadMasterDataFromFirestore() {
       } else if (colName === "system_settings" && items.length > 0) {
         db.settings = items[0];
       } else if (colName in db) {
-        if (items.length === 0 && colName === "outlets") {
-          (db as any)[colName] = [...defaultOutlets];
-        } else if (items.length === 0 && colName === "sales_outlets") {
-          (db as any)[colName] = [...defaultSalesOutlets];
-        } else {
-          (db as any)[colName] = items;
-        }
+        (db as any)[colName] = items;
       }
     } catch (err) {
       console.warn(`[MasterDataService] Failed loading '${colName}' from Firestore:`, err);

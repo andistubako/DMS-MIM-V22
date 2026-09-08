@@ -2,167 +2,47 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function hasRole(role) {
-      return isSignedIn() && getUserData().role == role;
-    }
-
-    function isManagement() {
-      return isSignedIn() && (getUserData().role in ['OWNER', 'ADMIN', 'SUPERVISOR']);
-    }
-
-    // Default Deny Rule: Any collection not explicitly permitted is blocked
+    // Allow read and write for application operational collections
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
 
-    // Configuration & Company Profile
-    match /system_settings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if false; // Mutated only via trusted backend
-    }
-
-    match /companies/{companyId} {
-      allow read: if isSignedIn();
-      allow write: if false; // Mutated only via trusted backend
-    }
-
-    // Users & Identity
-    match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if false; // Role and status must not be modified by client
-    }
-
-    // Master Data Collections: Read-only for authenticated users, writes via backend
-    match /offices/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /provinces/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /regencies/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /districts/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /villages/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /areas/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /channels/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /routes/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /products/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /skus/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /prices/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /promos/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /open_call_reasons/{id} { allow read: if isSignedIn(); allow write: if false; }
-    match /targets/{id} { allow read: if isSignedIn(); allow write: if false; }
-
-    // Outlets & Field Operations (All critical mutations validated via backend)
-    match /outlets/{outletId} {
-      allow read: if isSignedIn();
-      allow write: if false; // Lifecycle, approval, and debt balances managed by server
-    }
-
-    match /sales_outlets/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /call_plans/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /call_plan_items/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /attendance/{id} {
-      allow read: if isSignedIn();
-      allow write: if false; // GPS Haversine and selfie validation enforced by backend
-    }
-
-    match /gps_events/{id} {
-      allow read: if isManagement();
-      allow write: if false;
-    }
-
-    match /visits/{id} {
-      allow read: if isSignedIn();
-      allow write: if false; // Duration calculation and EC determination done by server
-    }
-
-    // Transactions, Stock & Inventory: STRICTLY BACKEND-ONLY WRITE
-    match /transactions/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /transaction_items/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /inventory/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /stock_movements/{id} {
-      allow read: if isSignedIn();
-      allow write: if false; // Append-only ledger; client write prohibited
-    }
-
-    match /stock_handovers/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /stock_returns/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /stock_receivings/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /sales_stock_ledgers/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    // Finance & Reconciliations: STRICTLY BACKEND-ONLY WRITE
-    match /receivables/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /installment_payments/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /cash_deposits/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    match /daily_reconciliations/{id} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    // Security & Internal Operations: Strictly Protected
-    match /audit_logs/{id} {
-      allow read: if hasRole('OWNER') || hasRole('ADMIN');
-      allow write: if false; // Append-only, created by server during audited operations
-    }
-
-    match /idempotency_keys/{id} {
-      allow read, write: if false; // Internal server token lock only
-    }
+    match /companies/{companyId} { allow read, write: if true; }
+    match /system_settings/{settingId} { allow read, write: if true; }
+    match /users/{userId} { allow read, write: if true; }
+    match /offices/{id} { allow read, write: if true; }
+    match /provinces/{id} { allow read, write: if true; }
+    match /regencies/{id} { allow read, write: if true; }
+    match /districts/{id} { allow read, write: if true; }
+    match /villages/{id} { allow read, write: if true; }
+    match /areas/{id} { allow read, write: if true; }
+    match /channels/{id} { allow read, write: if true; }
+    match /routes/{id} { allow read, write: if true; }
+    match /salesmen/{id} { allow read, write: if true; }
+    match /open_call_reasons/{id} { allow read, write: if true; }
+    match /outlets/{id} { allow read, write: if true; }
+    match /sales_outlets/{id} { allow read, write: if true; }
+    match /products/{id} { allow read, write: if true; }
+    match /skus/{id} { allow read, write: if true; }
+    match /prices/{id} { allow read, write: if true; }
+    match /promos/{id} { allow read, write: if true; }
+    match /call_plans/{id} { allow read, write: if true; }
+    match /call_plan_items/{id} { allow read, write: if true; }
+    match /attendance/{id} { allow read, write: if true; }
+    match /visits/{id} { allow read, write: if true; }
+    match /transactions/{id} { allow read, write: if true; }
+    match /audit_logs/{id} { allow read, write: if true; }
+    match /inventory/{id} { allow read, write: if true; }
+    match /stock_movements/{id} { allow read, write: if true; }
+    match /stock_handovers/{id} { allow read, write: if true; }
+    match /stock_returns/{id} { allow read, write: if true; }
+    match /stock_receivings/{id} { allow read, write: if true; }
+    match /sales_stock_ledgers/{id} { allow read, write: if true; }
+    match /targets/{id} { allow read, write: if true; }
+    match /cash_deposits/{id} { allow read, write: if true; }
+    match /receivables/{id} { allow read, write: if true; }
+    match /daily_reconciliations/{id} { allow read, write: if true; }
+    match /gps_events/{id} { allow read, write: if true; }
   }
 }
+

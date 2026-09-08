@@ -1,7 +1,29 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { initializeFirestore, getFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, setLogLevel } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import firebaseConfig from "../firebase-applet-config.json";
+
+// Configure Firestore log level to 'error' to suppress internal SDK existence-filter bloom filter warnings
+setLogLevel("error");
+
+// Filter out internal harmless Firestore SDK BloomFilter fallback notices
+const originalWarn = console.warn;
+console.warn = function (...args: any[]) {
+  const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
+  if (msg.includes("BloomFilter error") || msg.includes("BloomFilterError")) {
+    return;
+  }
+  originalWarn.apply(console, args);
+};
+
+const originalError = console.error;
+console.error = function (...args: any[]) {
+  const msg = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
+  if (msg.includes("BloomFilter error") || msg.includes("BloomFilterError")) {
+    return;
+  }
+  originalError.apply(console, args);
+};
 
 const isNode =
   typeof process !== "undefined" &&

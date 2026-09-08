@@ -21,13 +21,19 @@ export async function checkFirestoreIdempotency(key: string | undefined): Promis
 export async function recordFirestoreIdempotency(key: string | undefined, response: any, resourceId?: string) {
   if (!key) return;
   try {
-    await setDoc(doc(firestoreDb, "idempotency_keys", key), {
-      idempotency_key: key,
-      resource_id: resourceId || null,
-      response_payload: response,
-      created_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    });
+    const cleanPayload = JSON.parse(
+      JSON.stringify(
+        {
+          idempotency_key: key,
+          resource_id: resourceId || null,
+          response_payload: response,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        },
+        (_k, v) => (v === undefined ? null : v)
+      )
+    );
+    await setDoc(doc(firestoreDb, "idempotency_keys", key), cleanPayload, { merge: true });
   } catch (err) {
     console.warn("[Idempotency] Warning persisting idempotency key to Firestore:", err);
   }

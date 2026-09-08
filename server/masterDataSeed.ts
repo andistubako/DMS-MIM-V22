@@ -2,6 +2,7 @@ import { firestoreDb } from "./firebase.js";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   writeBatch,
@@ -565,20 +566,43 @@ export const defaultSalesOutlets = [
 ];
 
 export async function seedMasterDataToFirestore() {
-  console.log("[MasterData] Checking Firestore master collections and upserting missing master data...");
+  console.log("[MasterData] Checking Firestore master collections and seeding initial baseline if needed...");
   try {
+    const seedMetaRef = doc(firestoreDb, "system_metadata", "master_data_seeded");
+    const seedMetaSnap = await getDoc(seedMetaRef);
+    if (seedMetaSnap.exists() && seedMetaSnap.data()?.seeded) {
+      console.log("[MasterData] Master collections already initialized in Cloud Firestore. Preserving all user deletions and updates.");
+      return;
+    }
+
+    // Also check if any master collections already have data (e.g. from prior operation)
+    const [productsSnap, officesSnap, areasSnap] = await Promise.all([
+      getDocs(query(collection(firestoreDb, "products"), limit(1))),
+      getDocs(query(collection(firestoreDb, "offices"), limit(1))),
+      getDocs(query(collection(firestoreDb, "areas"), limit(1))),
+    ]);
+
+    if (!productsSnap.empty || !officesSnap.empty || !areasSnap.empty) {
+      console.log("[MasterData] Cloud Firestore master collections already contain live data. Recording seed lock and skipping re-seed to prevent restoring deleted items.");
+      await setDoc(seedMetaRef, {
+        seeded: true,
+        seeded_at: new Date().toISOString(),
+      });
+      return;
+    }
+
     const upsertCollection = async (name: string, defaultItems: any[]) => {
       const snap = await getDocs(collection(firestoreDb, name));
       const existingIds = new Set(snap.docs.map(d => d.id));
       const missing = defaultItems.filter(item => !existingIds.has(item._id || item.id));
       if (missing.length > 0) {
-        console.log(`[MasterData] Adding ${missing.length} missing items to '${name}' in Cloud Firestore...`);
+        console.log(`[MasterData] Adding ${missing.length} initial items to '${name}' in Cloud Firestore...`);
         const batch = writeBatch(firestoreDb);
         for (const item of missing) {
           batch.set(doc(firestoreDb, name, item._id || item.id), item);
         }
         await batch.commit();
-        console.log(`[MasterData] Collection '${name}' updated with ${missing.length} new items.`);
+        console.log(`[MasterData] Collection '${name}' initialized with ${missing.length} items.`);
       }
     };
 
@@ -596,8 +620,13 @@ export async function seedMasterDataToFirestore() {
     await upsertCollection("promos", defaultPromos);
     await upsertCollection("open_call_reasons", defaultOpenCallReasons);
     await upsertCollection("salesmen", defaultSalesmen);
-    await upsertCollection("outlets", defaultOutlets);
-    await upsertCollection("sales_outlets", defaultSalesOutlets);
+    // Note: outlets and sales_outlets start clean in production mode (no dummy/mock outlets)
+
+    await setDoc(seedMetaRef, {
+      seeded: true,
+      seeded_at: new Date().toISOString(),
+    });
+    console.log("[MasterData] Initial master collections seeded successfully and seed lock saved.");
   } catch (err) {
     console.error("[MasterData] Error during master data seeding:", err);
   }

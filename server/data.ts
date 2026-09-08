@@ -588,10 +588,12 @@ export const db = {
   visits: [] as Visit[],
   transactions: [] as Transaction[],
   inventory: [] as InventoryItem[],
+  warehouse_stocks: [] as any[],
   stock_movements: [] as StockMovement[],
   stock_handovers: [] as DailyStockHandover[],
   stock_returns: [] as DailyStockReturn[],
   stock_receivings: [] as StockReceiving[],
+  stock_adjustments: [] as any[],
   sales_stock_ledgers: [] as SalesStockLedger[],
   targets: [] as Target[],
   cash_deposits: [] as CashDeposit[],
@@ -791,13 +793,18 @@ export function ensureDefaultUsers() {
 
   db.users = uniqueUsers;
 
-  // Ensure all standard users exist in db.users
-  for (const su of standardUsers) {
-    const existing = db.users.find((u) => u.email.toLowerCase() === su.email.toLowerCase());
-    if (!existing) {
+  // Ensure baseline users exist only if user table is completely empty
+  if (db.users.length === 0) {
+    for (const su of standardUsers) {
       db.users.push(su);
-    } else if (!existing.password_hash) {
-      existing.password_hash = su.password_hash;
+    }
+  } else {
+    // Only verify that existing users have valid password hashes
+    for (const su of standardUsers) {
+      const existing = db.users.find((u) => u.email.toLowerCase() === su.email.toLowerCase());
+      if (existing && !existing.password_hash) {
+        existing.password_hash = su.password_hash;
+      }
     }
   }
 }
@@ -975,18 +982,6 @@ export function ensureDefaultMasterData() {
       { _id: "ch-3", code: "HORECA", name: "Hotel, Resto & Kafe", status: "ACTIVE", created_at: now },
       { _id: "ch-4", code: "WS", name: "Wholesaler (Grosir)", status: "ACTIVE", created_at: now },
     ];
-  } else {
-    const stdChannels: MasterEntity[] = [
-      { _id: "ch-1", code: "GT", name: "General Trade (Toko Kelontong/Warung)", status: "ACTIVE", created_at: now },
-      { _id: "ch-2", code: "MT", name: "Modern Trade (Minimarket/Supermarket)", status: "ACTIVE", created_at: now },
-      { _id: "ch-3", code: "HORECA", name: "Hotel, Resto & Kafe", status: "ACTIVE", created_at: now },
-      { _id: "ch-4", code: "WS", name: "Wholesaler (Grosir)", status: "ACTIVE", created_at: now },
-    ];
-    for (const sc of stdChannels) {
-      if (!db.channels.some((c) => c._id === sc._id || c.code === sc.code)) {
-        db.channels.push(sc);
-      }
-    }
   }
 
   if (!db.open_call_reasons || db.open_call_reasons.length === 0) {
@@ -1031,116 +1026,9 @@ export function ensureDefaultMasterData() {
     ];
   }
 
-  // Ensure default outlets exist if none
-  if (!db.outlets || db.outlets.length === 0) {
-    db.outlets = [
-      {
-        _id: "otl-1",
-        outlet_code: "OTL-MLG-001",
-        outlet_name: "Toko Berkah Jaya",
-        owner_name: "Haji Ahmad Santoso",
-        phone: "081234500111",
-        address: "Jl. Basuki Rahmat No. 45, Klojen, Kota Malang",
-        latitude: -7.9785,
-        longitude: 112.6315,
-        province_id: "prov-35",
-        regency_id: "reg-3573",
-        district_id: "dis-357301",
-        village_id: "vil-357301-01",
-        area_id: "area-1",
-        channel_id: "ch-1",
-        route_id: "route-mlg-01",
-        status: "ACTIVE",
-        lifecycle_status: "ACTIVE",
-        completed_transaction_count: 5,
-        total_volume: 85,
-        total_revenue: 4250000,
-        created_at: now,
-        created_by: "usr-admin",
-      },
-      {
-        _id: "otl-2",
-        outlet_code: "OTL-MLG-002",
-        outlet_name: "Minimarket Mahameru Mart",
-        owner_name: "Ibu Sulastri",
-        phone: "081234500222",
-        address: "Jl. MT Haryono No. 112, Lowokwaru, Kota Malang",
-        latitude: -7.9515,
-        longitude: 112.6138,
-        province_id: "prov-35",
-        regency_id: "reg-3573",
-        district_id: "dis-357303",
-        village_id: "vil-357303-01",
-        area_id: "area-1",
-        channel_id: "ch-2",
-        route_id: "route-mlg-02",
-        status: "ACTIVE",
-        lifecycle_status: "REPEAT",
-        completed_transaction_count: 2,
-        total_volume: 40,
-        total_revenue: 2100000,
-        created_at: now,
-        created_by: "usr-admin",
-      },
-      {
-        _id: "otl-3",
-        outlet_code: "OTL-MLG-003",
-        outlet_name: "Toko Sumber Rezeki",
-        owner_name: "Bapak Joko Widodo",
-        phone: "081234500333",
-        address: "Jl. Borobudur No. 28, Blimbing, Kota Malang",
-        latitude: -7.9421,
-        longitude: 112.6378,
-        province_id: "prov-35",
-        regency_id: "reg-3573",
-        district_id: "dis-357302",
-        village_id: "vil-357302-01",
-        area_id: "area-1",
-        channel_id: "ch-1",
-        route_id: "route-mlg-02",
-        status: "ACTIVE",
-        lifecycle_status: "NOO",
-        completed_transaction_count: 1,
-        total_volume: 15,
-        total_revenue: 750000,
-        created_at: now,
-        created_by: "usr-admin",
-      },
-      {
-        _id: "otl-4",
-        outlet_code: "OTL-MLG-004",
-        outlet_name: "Warung Madura Barokah 24 Jam",
-        owner_name: "Cak Roziq",
-        phone: "081234500444",
-        address: "Jl. Soekarno Hatta No. 89, Lowokwaru, Kota Malang",
-        latitude: -7.9452,
-        longitude: 112.6171,
-        province_id: "prov-35",
-        regency_id: "reg-3573",
-        district_id: "dis-357303",
-        village_id: "vil-357303-01",
-        area_id: "area-1",
-        channel_id: "ch-1",
-        route_id: "route-mlg-02",
-        status: "ACTIVE",
-        lifecycle_status: "PROSPECT",
-        completed_transaction_count: 0,
-        total_volume: 0,
-        total_revenue: 0,
-        created_at: now,
-        created_by: "usr-admin",
-      },
-    ];
-  }
-
-  if (!db.sales_outlets || db.sales_outlets.length === 0) {
-    db.sales_outlets = [
-      { _id: "so-1", sales_id: "usr-sales1", outlet_id: "otl-1", area_id: "area-1", status: "ACTIVE", assigned_at: now, assigned_by: "usr-admin" },
-      { _id: "so-2", sales_id: "usr-sales1", outlet_id: "otl-2", area_id: "area-1", status: "ACTIVE", assigned_at: now, assigned_by: "usr-admin" },
-      { _id: "so-3", sales_id: "usr-sales1", outlet_id: "otl-3", area_id: "area-1", status: "ACTIVE", assigned_at: now, assigned_by: "usr-admin" },
-      { _id: "so-4", sales_id: "usr-sales1", outlet_id: "otl-4", area_id: "area-1", status: "ACTIVE", assigned_at: now, assigned_by: "usr-admin" },
-    ];
-  }
+  // Ensure outlets and sales_outlets arrays exist
+  if (!db.outlets) db.outlets = [];
+  if (!db.sales_outlets) db.sales_outlets = [];
 
   // Ensure all collections are safely initialized as arrays
   if (!db.products) db.products = [];
@@ -1149,6 +1037,7 @@ export function ensureDefaultMasterData() {
   if (!db.promos) db.promos = [];
   if (!db.routes) db.routes = [];
   if (!db.inventory) db.inventory = [];
+  if (!db.warehouse_stocks) db.warehouse_stocks = [];
   if (!db.outlets) db.outlets = [];
   if (!db.salesmen) db.salesmen = [];
   if (!db.sales_outlets) db.sales_outlets = [];
@@ -1161,6 +1050,7 @@ export function ensureDefaultMasterData() {
   if (!db.stock_handovers) db.stock_handovers = [];
   if (!db.stock_returns) db.stock_returns = [];
   if (!db.stock_receivings) db.stock_receivings = [];
+  if (!db.stock_adjustments) db.stock_adjustments = [];
   if (!db.sales_stock_ledgers) db.sales_stock_ledgers = [];
   if (!db.targets) db.targets = [];
   if (!db.cash_deposits) db.cash_deposits = [];
@@ -1189,10 +1079,12 @@ export function resetToCleanFreshDatabase() {
   db.visits = [];
   db.transactions = [];
   db.inventory = [];
+  db.warehouse_stocks = [];
   db.stock_movements = [];
   db.stock_handovers = [];
   db.stock_returns = [];
   db.stock_receivings = [];
+  db.stock_adjustments = [];
   db.sales_stock_ledgers = [];
   db.targets = [];
   db.cash_deposits = [];

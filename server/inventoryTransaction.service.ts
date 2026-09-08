@@ -3,11 +3,6 @@ import { firestoreDb } from "./firebase.js";
 import { collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { syncSingleDoc, deleteSingleDoc } from "./persistence.js";
 import { resolveSkuInfo } from "./skuResolver.js";
-const isCloudSqlConnected = false;
-const syncDocToPostgres = (_col: string, _doc: any) => Promise.resolve();
-import { sqlDb } from "../src/db/index.js";
-import { transactions as pgTransactions, stockHandovers as pgStockHandovers, stockReturns as pgStockReturns, stockReceivings as pgStockReceivings, inventory as pgInventory, stockMovements as pgStockMovements, salesStockLedgers as pgSalesStockLedgers, outlets as pgOutlets, visits as pgVisits } from "../src/db/schema.js";
-import { eq, sql } from "drizzle-orm";
 
 export type SaleItemInput = {
   sku_id: string;
@@ -112,36 +107,24 @@ export async function createOrUpdateInventory(
 
   // Persist to Google Cloud Firestore as SSOT
   await syncSingleDoc("inventory", updatedRecord._id || docId, updatedRecord);
-
-  // Secondary sync to PostgreSQL if connected
-  if (isCloudSqlConnected) {
-    try {
-      const existingPg = await sqlDb.select().from(pgInventory).where(
-        sql`${pgInventory.locationType} = ${locType} AND ${pgInventory.locationId} = ${locId} AND ${pgInventory.skuId} = ${skuId}`
-      ).limit(1);
-
-      if (existingPg[0]) {
-        await sqlDb.update(pgInventory).set({
-          stockOnHand: existingPg[0].stockOnHand + qtyDelta,
-          availableStock: existingPg[0].availableStock + qtyDelta,
-          updatedAt: new Date(),
-        }).where(eq(pgInventory.id, existingPg[0].id));
-      } else {
-        await sqlDb.insert(pgInventory).values({
-          id: docId,
-          locationType: locType,
-          locationId: locId,
-          skuId,
-          stockOnHand: qtyDelta,
-          availableStock: qtyDelta,
-          allocatedStock: 0,
-          status: "ACTIVE",
-        });
-      }
-    } catch (pgErr) {
-      console.warn("[InventoryTransaction] Postgres secondary sync warning:", pgErr);
-    }
-  }
+  const sku = (db.skus || []).find((s) => s._id === skuId);
+  const stockDocId = `${locId}_${skuId}`;
+  await syncSingleDoc("warehouse_stocks", stockDocId, {
+    _id: stockDocId,
+    id: stockDocId,
+    warehouse_id: locType === "WAREHOUSE" ? locId : undefined,
+    salesman_id: locType === "SALES" ? locId : undefined,
+    location_type: locType,
+    location_id: locId,
+    sku_id: skuId,
+    sku_code: sku?.code || skuId,
+    sku_name: sku?.name || skuId,
+    base_uom: sku?.uom || (sku as any)?.unit || "PCS",
+    quantity: updatedRecord.stock_on_hand,
+    available_quantity: updatedRecord.available_stock,
+    stock_on_hand: updatedRecord.stock_on_hand,
+    updated_at: nowStr,
+  });
 
   return updatedRecord;
 }
@@ -198,25 +181,7 @@ export async function recordStockMovement(mvt: {
   await syncSingleDoc("stock_movements", mvtId, fullMvt);
 
   // Secondary sync to PostgreSQL if connected
-  if (isCloudSqlConnected) {
-    try {
-      await sqlDb.insert(pgStockMovements).values({
-        id: mvtId,
-        movementType: mvt.movementType,
-        sourceLocationType: mvt.sourceLocationType,
-        sourceLocationId: mvt.sourceLocationId,
-        destLocationType: mvt.destLocationType,
-        destLocationId: mvt.destLocationId,
-        skuId: mvt.skuId,
-        quantity: mvt.quantity,
-        referenceId: mvt.referenceId || null,
-        performedBy: mvt.performedBy,
-        notes: mvt.notes || null,
-      });
-    } catch (pgErr) {
-      console.warn("[InventoryTransaction] Postgres secondary mvt sync warning:", pgErr);
-    }
-  }
+  
 
   return fullMvt;
 }
@@ -296,36 +261,7 @@ export async function upsertSalesStockLedger(
   await syncSingleDoc("sales_stock_ledgers", ledgerId, ledger);
 
   // Secondary sync to PostgreSQL if connected
-  if (isCloudSqlConnected) {
-    try {
-      const existingPg = await sqlDb.select().from(pgSalesStockLedgers).where(
-        sql`${pgSalesStockLedgers.salesmanId} = ${salesmanId} AND ${pgSalesStockLedgers.date} = ${businessDate} AND ${pgSalesStockLedgers.skuId} = ${skuId}`
-      ).limit(1);
-
-      if (existingPg[0]) {
-        await sqlDb.update(pgSalesStockLedgers).set({
-          loadedStock: Number(existingPg[0].loadedStock || 0) + (updates.loadedStock || 0),
-          soldStock: Number(existingPg[0].soldStock || 0) + (updates.soldStock || 0),
-          returnedStock: Number(existingPg[0].returnedStock || 0) + (updates.returnedStock || 0),
-          finalStock: Number(existingPg[0].finalStock || 0) + (updates.finalStock || 0),
-        }).where(eq(pgSalesStockLedgers.id, existingPg[0].id));
-      } else {
-        await sqlDb.insert(pgSalesStockLedgers).values({
-          id: ledgerId,
-          salesmanId,
-          date: businessDate,
-          skuId,
-          initialStock: updates.initialStock || 0,
-          loadedStock: updates.loadedStock || 0,
-          soldStock: updates.soldStock || 0,
-          returnedStock: updates.returnedStock || 0,
-          finalStock: updates.finalStock || 0,
-        });
-      }
-    } catch (pgErr) {
-      console.warn("[InventoryTransaction] Postgres secondary ledger sync warning:", pgErr);
-    }
-  }
+  
 
   return ledger;
 }
@@ -541,35 +477,7 @@ export async function postSaleAtomic(input: {
   });
 
   // Secondary sync to Postgres if connected
-  if (isCloudSqlConnected) {
-    try {
-      await sqlDb.insert(pgTransactions).values({
-        id: transactionId,
-        invoiceNumber,
-        salesmanId,
-        outletId,
-        visitId: input.visit_id || null,
-        officeId: input.office_id || "off-1",
-        transactionType: input.transaction_type || "CASH",
-        subtotal,
-        discountAmount: discountTotal,
-        taxAmount,
-        totalAmount,
-        paidAmount: totalAmount,
-        paymentStatus: "PAID",
-        deliveryStatus: "DELIVERED",
-        items: processedItems,
-        notes: input.notes || null,
-        createdAt: now,
-      });
-      await sqlDb.update(pgOutlets).set({ status: nextStatus as any }).where(eq(pgOutlets.id, outletId));
-      if (input.visit_id) {
-        await sqlDb.update(pgVisits).set({ isEffectiveCall: true }).where(eq(pgVisits.id, input.visit_id));
-      }
-    } catch (pgErr) {
-      console.warn("[InventoryTransaction] Postgres secondary transaction sync notice:", pgErr);
-    }
-  }
+  
 
   return { transaction: newTransaction, replayed: false };
 }
@@ -636,15 +544,7 @@ export async function cancelTransaction(
   });
 
   // Secondary sync to PostgreSQL if connected
-  if (isCloudSqlConnected) {
-    try {
-      await sqlDb.update(pgTransactions).set({
-        paymentStatus: "CANCELLED",
-      }).where(eq(pgTransactions.id, txn._id));
-    } catch (pgErr) {
-      console.warn("[InventoryTransaction] Postgres cancel sync notice:", pgErr);
-    }
-  }
+  
 
   return { success: true, transaction: txn };
 }
@@ -930,14 +830,14 @@ export async function createStockHandover(data: {
     business_date: targetDate,
     warehouse_id: targetWhId,
     salesman_id: data.salesman_id,
-    status: data.auto_confirm ? "CONFIRMED" : "DRAFT",
+    status: "DRAFT",
     is_additional: isAdditional,
     items: processedItems,
     notes: data.notes || "",
     prepared_by: userId,
     prepared_at: nowStr,
-    confirmed_by: data.auto_confirm ? userId : undefined,
-    confirmed_at: data.auto_confirm ? nowStr : undefined,
+    confirmed_by: undefined,
+    confirmed_at: undefined,
     created_by: userId,
     created_at: nowStr,
     updated_at: nowStr,
@@ -1043,7 +943,7 @@ export async function createStockReturn(data: {
     business_date: targetDate,
     warehouse_id: targetWhId,
     salesman_id: data.salesman_id,
-    status: data.auto_confirm ? "CONFIRMED" : "DRAFT",
+    status: "DRAFT",
     items: processedItems,
     notes: data.notes || "",
     created_by: userId,

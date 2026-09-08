@@ -1,20 +1,17 @@
-import type { Pool } from 'pg';
-import { createFallbackSqlDb } from './fallbackDb.js';
+import { firestoreDb, auth } from '../../server/firebase.js';
+import { createFirestoreDbAdapter } from './firestoreDbAdapter.js';
 
-console.log("[DB] Cloud SQL & PostgreSQL Database telah dihapus. Sistem beroperasi 100% menggunakan Google Cloud Firestore (Single Source of Truth).");
+console.log("[DB] Sistem beroperasi 100% menggunakan Google Cloud Firestore sebagai Single Source of Truth (SSOT).");
 
-// Dummy safe pool for any legacy typing references
-export const pool = {
-  connect: async () => {
-    throw new Error("Cloud SQL & PostgreSQL telah dihapus. Sistem menggunakan Google Cloud Firestore.");
-  },
-  query: async () => {
-    throw new Error("Cloud SQL & PostgreSQL telah dihapus. Sistem menggunakan Google Cloud Firestore.");
-  },
-  on: () => {},
-  end: async () => {},
-} as unknown as Pool;
+/** Official Firestore instance & Auth exported for application-wide SSOT access */
+export { firestoreDb, auth };
+export const db = firestoreDb;
+export const firestore = firestoreDb;
 
-export const sqlDb = createFallbackSqlDb();
+/**
+ * Firestore Database Adapter
+ * Provides compatible fluent interface over Google Cloud Firestore
+ * without any relational SQL pools, Drizzle ORM, or background PostgreSQL drivers.
+ */
+export const sqlDb = createFirestoreDbAdapter();
 export type DbClient = typeof sqlDb;
-
